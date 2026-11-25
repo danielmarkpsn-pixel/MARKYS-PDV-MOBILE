@@ -17,8 +17,8 @@ class LocalDatabase {
     if (_db != null) return _db!;
     _db = await openDatabase(
       join(await getDatabasesPath(), 'markys_pdv_$userId.db'),
-      version: 3,
-      onUpgrade: (db, old, version) async { if (old < 2) await upgradeStock(db); if (old < 3) await upgradeCustomers(db); },
+      version: 4,
+      onUpgrade: (db, old, version) async { if (old < 2) await upgradeStock(db); if (old < 3) await upgradeCustomers(db); if (old < 4) await upgradeSales(db); },
       onConfigure: (db) async => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: (db, version) async {
         await db.execute('''
@@ -85,12 +85,44 @@ class LocalDatabase {
         ''');
         await upgradeStock(db);
         await upgradeCustomers(db);
+        await upgradeSales(db);
         await db.execute('CREATE INDEX idx_products_business ON products(business_id)');
         await db.execute('CREATE INDEX idx_sales_business_date ON sales(business_id, created_at)');
       },
     );
     await _db!.execute('PRAGMA foreign_keys = ON');
     return _db!;
+  }
+
+  Future<void> upgradeSales(Database db) async {
+    await db.execute('ALTER TABLE sales ADD COLUMN discount_cents INTEGER NOT NULL DEFAULT 0');
+  }
+
+  Future<int> finishSale(int businessId, int? customerId, Map<int,int> cart, int discount, String payment) async {
+    if (cart.isEmpty || discount < 0 || !['Dinheiro','Pix','Débito','Crédito'].contains(payment)) throw StateError('Venda inválida');
+    return (await database).transaction((tx) async {
+      if (customerId != null && (await tx.query('customers',where:'id = ? AND business_id = ? AND active = 1',whereArgs:[customerId,businessId])).isEmpty) throw StateError('Cliente indisponível');
+      int subtotal = 0;
+      final items = <Map<String,Object?>>[];
+      for (final e in cart.entries) {
+        final rows = await tx.query('products',where:'id = ? AND business_id = ? AND active = 1',whereArgs:[e.key,businessId]);
+        if (rows.isEmpty || e.value <= 0) throw StateError('Produto indisponível');
+        final p = rows.first;
+        if ((p['stock'] as int) < e.value) throw StateError('Estoque insuficiente: ${p['name']}');
+        final price = p['sale_cents'] as int;
+        subtotal += price * e.value;
+        items.add({'product_id':e.key,'quantity':e.value,'price_cents':price});
+      }
+      if (discount > subtotal) throw StateError('Desconto superior ao subtotal');
+      final now = DateTime.now().toIso8601String();
+      final id = await tx.insert('sales',{'business_id':businessId,'customer_id':customerId,'total_cents':subtotal-discount,'discount_cents':discount,'payment_method':payment,'created_at':now});
+      for (final item in items) {
+        await tx.insert('sale_items',{'sale_id':id,...item});
+        await tx.rawUpdate('UPDATE products SET stock = stock - ? WHERE id = ? AND business_id = ?',[item['quantity'],item['product_id'],businessId]);
+        await tx.insert('stock_movements',{'product_id':item['product_id'],'business_id':businessId,'delta':-(item['quantity'] as int),'reason':'Venda #$id','created_at':now});
+      }
+      return id;
+    });
   }
 
   Future<void> upgradeCustomers(Database db) async {
