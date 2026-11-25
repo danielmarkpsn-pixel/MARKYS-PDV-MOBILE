@@ -7,7 +7,7 @@ import 'theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Supabase.initialize(url: 'https://zdltbzwowkjevhigcgvr.supabase.co', anonKey: const String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY'));
+  await Supabase.initialize(url: 'https://zdltbzwowkjevhigcgvr.supabase.co', publishableKey: const String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY'));
   runApp(const MarkysApp());
 }
 
@@ -202,12 +202,12 @@ class HomePage extends StatelessWidget {
           Text(businessName.toUpperCase(), style: const TextStyle(color: Colors.white70)),
           const SizedBox(height: 15),
           const Text('Hoje', style: TextStyle(color: Colors.white70)),
-          const Text('R$ 0,00', style: TextStyle(color: Colors.white, fontSize: 32)),
+          const Text('R\$ 0,00', style: TextStyle(color: Colors.white, fontSize: 32)),
           const Text('0 vendas realizadas', style: TextStyle(color: Colors.white70)),
           const SizedBox(height: 12),
           const Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-            _Metric(label: 'Ontem', value: 'R$ 0,00'),
-            _Metric(label: 'Este mês', value: 'R$ 0,00'),
+            _Metric(label: 'Ontem', value: 'R\$ 0,00'),
+            _Metric(label: 'Este mês', value: 'R\$ 0,00'),
           ]),
           const SizedBox(height: 18),
           SizedBox(width: double.infinity, child: FilledButton(
@@ -220,7 +220,7 @@ class HomePage extends StatelessWidget {
       ),
       const Padding(padding: EdgeInsets.all(12), child: _HomeCard(
         icon: Icons.inventory_2_outlined, title: 'Estoque',
-        content: 'Valor em estoque: R$ 0,00\nNenhum produto cadastrado',
+        content: 'Valor em estoque: R\$ 0,00\nNenhum produto cadastrado',
         button: '+ Cadastrar produto',
       )),
       const Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: _HomeCard(
