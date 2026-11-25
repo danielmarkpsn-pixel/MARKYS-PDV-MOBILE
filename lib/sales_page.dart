@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'data/local_database.dart';
 import 'products_page.dart';
 import 'stock_tools.dart';
+import 'receipt_page.dart';
 
 String saleMoney(int cents) => 'R\$ ${(cents / 100).toStringAsFixed(2).replaceAll('.', ',')}';
 
@@ -54,8 +55,8 @@ class _SalesPageState extends State<SalesPage> {
     if(cart.isEmpty||businessId==null)return;
     final result=await Navigator.push<int>(context,MaterialPageRoute(builder:(_)=>CheckoutPage(local:local,businessId:businessId!,products:products,customers:customers,cart:cart,orderId:widget.orderId)));
     if(!mounted)return;
-    if(result!=null && widget.orderId!=null){Navigator.pop(context);return;}
-    if(result!=null){setState(()=>cart.clear());await load();if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Venda #$result registrada com sucesso')));}
+    if(result!=null && widget.orderId!=null){await openReceipt(context,local,businessId!,result);if(mounted)Navigator.pop(context);return;}
+    if(result!=null){setState(()=>cart.clear());await load();if(mounted)await openReceipt(context,local,businessId!,result);if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Venda #$result registrada com sucesso')));}
   }
   Future<void> saveOrder() async {
     if(cart.isEmpty||businessId==null)return;
