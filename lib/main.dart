@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth/login_page.dart';
 import 'data/local_database.dart';
 import 'theme.dart';
+import 'products_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -71,7 +72,7 @@ class _WelcomeGateState extends State<WelcomeGate> {
         return const Scaffold(body: Center(child: CircularProgressIndicator()));
       }
       final business = snapshot.data;
-      return business == null ? BusinessRegisterPage(userId: widget.userId) : HomePage(businessName: business['name'] as String);
+      return business == null ? BusinessRegisterPage(userId: widget.userId) : HomePage(businessName: business['name'] as String, userId: widget.userId);
     },
   );
 }
@@ -124,7 +125,7 @@ class _BusinessRegisterPageState extends State<BusinessRegisterPage> {
   }
 
   @override
-  Widget build(BuildContext context) => _registeredName != null ? HomePage(businessName: _registeredName!) : Scaffold(
+  Widget build(BuildContext context) => _registeredName != null ? HomePage(businessName: _registeredName!, userId: widget.userId) : Scaffold(
     appBar: AppBar(title: const Text('Cadastrar minha empresa'), actions: [IconButton(onPressed: () => Supabase.instance.client.auth.signOut(), icon: const Icon(Icons.logout))]),
     body: SafeArea(
       child: Form(
@@ -152,7 +153,8 @@ class _BusinessRegisterPageState extends State<BusinessRegisterPage> {
 
 class HomePage extends StatelessWidget {
   final String businessName;
-  const HomePage({super.key, required this.businessName});
+  final String userId;
+  const HomePage({super.key, required this.businessName, required this.userId});
 
   static const sections = <(IconData, String)>[
     (Icons.home_outlined, 'Início'),
@@ -184,7 +186,9 @@ class HomePage extends StatelessWidget {
             title: Text(section.$2, style: const TextStyle(color: Colors.white)),
             onTap: () {
               Navigator.pop(context);
-              if (section.$2 != 'Início') {
+              if (section.$2 == 'Produtos') {
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => ProductsPage(userId: userId)));
+              } else if (section.$2 != 'Início') {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text('Módulo ${section.$2}: em desenvolvimento')),
                 );
@@ -218,7 +222,8 @@ class HomePage extends StatelessWidget {
           )),
         ]),
       ),
-      const Padding(padding: EdgeInsets.all(12), child: _HomeCard(
+      Padding(padding: const EdgeInsets.all(12), child: _HomeCard(
+        onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ProductsPage(userId: userId))),
         icon: Icons.inventory_2_outlined, title: 'Estoque',
         content: 'Valor em estoque: R\$ 0,00\nNenhum produto cadastrado',
         button: '+ Cadastrar produto',
@@ -251,7 +256,8 @@ class _HomeCard extends StatelessWidget {
   final String title;
   final String content;
   final String button;
-  const _HomeCard({required this.icon, required this.title, required this.content, required this.button});
+  final VoidCallback? onPressed;
+  const _HomeCard({required this.icon, required this.title, required this.content, required this.button, this.onPressed});
   @override
   Widget build(BuildContext context) => Card(
     child: Padding(padding: const EdgeInsets.all(14), child: Column(
@@ -262,7 +268,7 @@ class _HomeCard extends StatelessWidget {
         const SizedBox(height: 12),
         Text(content),
         const SizedBox(height: 12),
-        FilledButton(onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+        FilledButton(onPressed: onPressed ?? () => ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('$button: em desenvolvimento')),
         ), child: Text(button)),
       ],
