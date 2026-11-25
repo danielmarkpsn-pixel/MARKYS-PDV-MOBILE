@@ -7,6 +7,7 @@ import 'theme.dart';
 import 'products_page.dart';
 import 'customers_page.dart';
 import 'sales_page.dart';
+import 'commerce_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -164,6 +165,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   String get userId => widget.userId;
   String get businessName => widget.businessName;
+  int today=0,yesterday=0,month=0,count=0,orders=0;
   String stockSummary = 'Carregando estoque...';
   @override
   void initState(){super.initState();refreshStock();}
@@ -174,11 +176,22 @@ class _HomePageState extends State<HomePage> {
       final rows=await (await local.database).rawQuery('SELECT COUNT(*) AS total, COALESCE(SUM(stock * cost_cents),0) AS value, COALESCE(SUM(CASE WHEN stock <= min_stock THEN 1 ELSE 0 END),0) AS low FROM products WHERE business_id = ? AND active = 1',[business?['id']]);
       final r=rows.first;
       final value=((r['value'] as num)/100).toStringAsFixed(2).replaceAll('.',',');
-      if(mounted)setState(()=>stockSummary='Valor de custo em estoque: R\\$ $value\\n${r['total']} produtos ativos • ${r['low']} com estoque baixo');
+      final db=await local.database;
+      final now=DateTime.now();
+      final day=DateTime(now.year,now.month,now.day);
+      final prev=day.subtract(const Duration(days:1));
+      final start=DateTime(now.year,now.month);
+      final sales=await db.query('sales',where:"business_id = ? AND status = 'Concluída'",whereArgs:[business?['id']]);
+      final pending=await db.query('open_orders',where:'business_id = ?',whereArgs:[business?['id']]);
+      int t=0,y=0,m=0,n=0;
+      for(final s in sales){final date=DateTime.tryParse(s['created_at'].toString());if(date==null)continue;final amount=s['total_cents'] as int;if(!date.isBefore(day)){t+=amount;n++;}else if(!date.isBefore(prev)){y+=amount;}if(!date.isBefore(start))m+=amount;}
+      if(mounted)setState((){today=t;yesterday=y;month=m;count=n;orders=pending.length;});
+      if(mounted)setState(()=>stockSummary='Valor de custo em estoque: R\$ $value\n${r['total']} produtos ativos • ${r['low']} com estoque baixo');
     }catch(_){if(mounted)setState(()=>stockSummary='Não foi possível carregar estoque');}
   }
   Future<void> openProducts() async {await Navigator.of(context).push(MaterialPageRoute(builder:(_)=>ProductsPage(userId:userId)));if(mounted)await refreshStock();}
   Future<void> openSales() async { await Navigator.of(context).push(MaterialPageRoute(builder: (_) => SalesPage(userId: userId))); if (mounted) await refreshStock(); }
+  Future<void> openCommerce(String mode) async {await Navigator.push(context,MaterialPageRoute(builder:(_)=>CommercePage(userId:userId,mode:mode)));if(mounted)await refreshStock();}
   static const sections = <(IconData, String)>[
     (Icons.home_outlined, 'Início'),
     (Icons.shopping_cart_outlined, 'Vender'),
@@ -213,6 +226,8 @@ class _HomePageState extends State<HomePage> {
                 openProducts();
               } else if (section.$2 == 'Vender') {
                 openSales();
+              } else if (['Pedidos','Finanças','Histórico'].contains(section.$2)) {
+                openCommerce(section.$2);
               } else if (section.$2 == 'Clientes') {
                 Navigator.of(context).push(MaterialPageRoute(builder: (_) => CustomersPage(userId: userId)));
               } else if (section.$2 != 'Início') {
@@ -233,12 +248,12 @@ class _HomePageState extends State<HomePage> {
           Text(businessName.toUpperCase(), style: const TextStyle(color: Colors.white70)),
           const SizedBox(height: 15),
           const Text('Hoje', style: TextStyle(color: Colors.white70)),
-          const Text('R\$ 0,00', style: TextStyle(color: Colors.white, fontSize: 32)),
-          const Text('0 vendas realizadas', style: TextStyle(color: Colors.white70)),
+          Text(saleMoney(today), style: const TextStyle(color: Colors.white, fontSize: 32)),
+          Text('$count vendas realizadas', style: const TextStyle(color: Colors.white70)),
           const SizedBox(height: 12),
-          const Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-            _Metric(label: 'Ontem', value: 'R\$ 0,00'),
-            _Metric(label: 'Este mês', value: 'R\$ 0,00'),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+            _Metric(label: 'Ontem', value: saleMoney(yesterday)),
+            _Metric(label: 'Este mês', value: saleMoney(month)),
           ]),
           const SizedBox(height: 18),
           SizedBox(width: double.infinity, child: FilledButton(
@@ -253,9 +268,9 @@ class _HomePageState extends State<HomePage> {
         content: stockSummary,
         button: '+ Cadastrar produto',
       )),
-      const Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: _HomeCard(
+      Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: _HomeCard(
         icon: Icons.receipt_long_outlined, title: 'Pedidos em aberto',
-        content: 'Nenhum pedido em aberto', button: '+ Criar pedido',
+        content: '$orders pedidos em aberto', button: 'Ver pedidos', onPressed: () => openCommerce('Pedidos'),
       )),
       const Padding(padding: EdgeInsets.all(12), child: _HomeCard(
         icon: Icons.storefront_outlined, title: 'Catálogo Online',
