@@ -3,13 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
+import 'data/local_database.dart';
 
 Widget productPhoto(String? photo, double size) {
   if (photo == null || photo.isEmpty) return Icon(Icons.inventory_2_outlined, size: size / 2);
   return ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(File(photo), width: size, height: size, fit: BoxFit.cover, errorBuilder: (_, error, stack) => Icon(Icons.broken_image_outlined, size: size / 2)));
 }
 
-import 'data/local_database.dart';
 
 class ProductsPage extends StatefulWidget {
   const ProductsPage({super.key, required this.userId});
