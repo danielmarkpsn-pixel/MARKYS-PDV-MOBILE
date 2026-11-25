@@ -6,7 +6,11 @@ class LocalDatabase {
   final String userId;
   static final Map<String, LocalDatabase> _accounts = {};
   static LocalDatabase forUser(String userId) {
-    if (!RegExp(r'^[a-fA-F0-9-]{36}
+    if (userId.length != 36 || RegExp(r'[^a-fA-F0-9-]').hasMatch(userId)) {
+      throw ArgumentError('Conta inválida');
+    }
+    return _accounts.putIfAbsent(userId, () => LocalDatabase._(userId));
+  }
   Database? _db;
 
   Future<Database> get database async {
