@@ -17,8 +17,8 @@ class LocalDatabase {
     if (_db != null) return _db!;
     _db = await openDatabase(
       join(await getDatabasesPath(), 'markys_pdv_$userId.db'),
-      version: 4,
-      onUpgrade: (db, old, version) async { if (old < 2) await upgradeStock(db); if (old < 3) await upgradeCustomers(db); if (old < 4) await upgradeSales(db); },
+      version: 5,
+      onUpgrade: (db, old, version) async { if (old < 2) await upgradeStock(db); if (old < 3) await upgradeCustomers(db); if (old < 4) await upgradeSales(db); if (old < 5) await upgradeFinance(db); },
       onConfigure: (db) async => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: (db, version) async {
         await db.execute('''
@@ -86,6 +86,7 @@ class LocalDatabase {
         await upgradeStock(db);
         await upgradeCustomers(db);
         await upgradeSales(db);
+        await upgradeFinance(db);
         await db.execute('CREATE INDEX idx_products_business ON products(business_id)');
         await db.execute('CREATE INDEX idx_sales_business_date ON sales(business_id, created_at)');
       },
@@ -94,12 +95,41 @@ class LocalDatabase {
     return _db!;
   }
 
+  Future<void> upgradeFinance(Database db) async {
+    await db.execute("ALTER TABLE sales ADD COLUMN status TEXT NOT NULL DEFAULT 'Concluída'");
+    await db.execute('ALTER TABLE sales ADD COLUMN cancelled_at TEXT');
+    await db.execute('CREATE TABLE sale_payments (id INTEGER PRIMARY KEY, sale_id INTEGER NOT NULL REFERENCES sales(id), method TEXT NOT NULL, amount INTEGER NOT NULL)');
+    await db.execute('INSERT INTO sale_payments(sale_id,method,amount) SELECT id,payment_method,total_cents FROM sales');
+    await db.execute('CREATE TABLE debt_receipts (id INTEGER PRIMARY KEY, sale_id INTEGER NOT NULL REFERENCES sales(id), amount INTEGER NOT NULL, method TEXT NOT NULL, created_at TEXT NOT NULL)');
+    await db.execute('CREATE TABLE open_orders (id INTEGER PRIMARY KEY, business_id INTEGER NOT NULL REFERENCES businesses(id), cart_json TEXT NOT NULL, created_at TEXT NOT NULL)');
+  }
+  Future<void> cancelSale(int businessId,int id) async {
+    await (await database).transaction((tx) async {
+      final rows=await tx.query('sales',where:"id = ? AND business_id = ? AND status = 'Concluída'",whereArgs:[id,businessId]);
+      if(rows.isEmpty)throw StateError('Venda indisponível');
+      if((await tx.query('debt_receipts',where:'sale_id = ?',whereArgs:[id])).isNotEmpty)throw StateError('Venda com recebimento de fiado: regularize antes de cancelar');
+      final now=DateTime.now().toIso8601String();
+      for(final item in await tx.query('sale_items',where:'sale_id = ?',whereArgs:[id])){
+        await tx.rawUpdate('UPDATE products SET stock = stock + ? WHERE id = ? AND business_id = ?',[item['quantity'],item['product_id'],businessId]);
+        await tx.insert('stock_movements',{'product_id':item['product_id'],'business_id':businessId,'delta':item['quantity'],'reason':'Cancelamento #$id','created_at':now});
+      }
+      await tx.update('sales',{'status':'Cancelada','cancelled_at':now},where:'id = ? AND business_id = ?',whereArgs:[id,businessId]);
+    });
+  }
+  Future<void> receiveDebt(int businessId,int id,int amount,String method) async {
+    await (await database).transaction((tx) async {
+      final rows=await tx.rawQuery("SELECT COALESCE((SELECT SUM(amount) FROM sale_payments WHERE sale_id=s.id AND method='Fiado'),0)-COALESCE((SELECT SUM(amount) FROM debt_receipts WHERE sale_id=s.id),0) AS balance FROM sales s WHERE s.id=? AND s.business_id=? AND s.status='Concluída'",[id,businessId]);
+      if(rows.isEmpty||amount<=0||amount>(rows.first['balance'] as int)||!['Pix','Dinheiro','Débito','Crédito'].contains(method))throw StateError('Recebimento inválido');
+      await tx.insert('debt_receipts',{'sale_id':id,'amount':amount,'method':method,'created_at':DateTime.now().toIso8601String()});
+    });
+  }
+
   Future<void> upgradeSales(Database db) async {
     await db.execute('ALTER TABLE sales ADD COLUMN discount_cents INTEGER NOT NULL DEFAULT 0');
   }
 
-  Future<int> finishSale(int businessId, int? customerId, Map<int,int> cart, int discount, String payment) async {
-    if (cart.isEmpty || discount < 0 || !['Dinheiro','Pix','Débito','Crédito'].contains(payment)) throw StateError('Venda inválida');
+  Future<int> finishSale(int businessId, int? customerId, Map<int,int> cart, int discount, String payment, {Map<String,int>? split, int? orderId}) async {
+    if (cart.isEmpty || discount < 0 || !['Dinheiro','Pix','Débito','Crédito','Fiado','Combinado'].contains(payment)) throw StateError('Venda inválida');
     return (await database).transaction((tx) async {
       if (customerId != null && (await tx.query('customers',where:'id = ? AND business_id = ? AND active = 1',whereArgs:[customerId,businessId])).isEmpty) throw StateError('Cliente indisponível');
       int subtotal = 0;
@@ -114,8 +144,13 @@ class LocalDatabase {
         items.add({'product_id':e.key,'quantity':e.value,'price_cents':price});
       }
       if (discount > subtotal) throw StateError('Desconto superior ao subtotal');
+      final total = subtotal-discount;
+      final parts = split ?? {payment:total};
+      if (parts.isEmpty || parts.entries.any((e)=>!['Dinheiro','Pix','Débito','Crédito','Fiado'].contains(e.key)||e.value<0) || parts.values.fold<int>(0,(a,b)=>a+b)!=total || (parts['Fiado']??0)>0 && customerId==null) throw StateError('Confira os pagamentos e o cliente');
+      if(orderId!=null && (await tx.delete('open_orders',where:'id = ? AND business_id = ?',whereArgs:[orderId,businessId]))!=1) throw StateError('Pedido indisponível');
       final now = DateTime.now().toIso8601String();
       final id = await tx.insert('sales',{'business_id':businessId,'customer_id':customerId,'total_cents':subtotal-discount,'discount_cents':discount,'payment_method':payment,'created_at':now});
+      for(final e in parts.entries){await tx.insert('sale_payments',{'sale_id':id,'method':e.key,'amount':e.value});}
       for (final item in items) {
         await tx.insert('sale_items',{'sale_id':id,...item});
         await tx.rawUpdate('UPDATE products SET stock = stock - ? WHERE id = ? AND business_id = ?',[item['quantity'],item['product_id'],businessId]);
