@@ -1,9 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'auth/login_page.dart';
 import 'data/local_database.dart';
 import 'theme.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Supabase.initialize(url: 'https://zdltbzwowkjevhigcgvr.supabase.co', anonKey: const String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY'));
   runApp(const MarkysApp());
 }
 
@@ -14,18 +18,50 @@ class MarkysApp extends StatelessWidget {
     title: 'MARKYS PDV MOBILE',
     theme: MarkysTheme.light,
     debugShowCheckedModeBanner: false,
-    home: const WelcomeGate(),
+    home: const AuthGate(),
   );
 }
 
+class AuthGate extends StatefulWidget {
+  const AuthGate({super.key});
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+class _AuthGateState extends State<AuthGate> {
+  final auth = Supabase.instance.client.auth;
+  late final StreamSubscription<AuthState> subscription;
+  bool recovery = false;
+  @override
+  void initState() {
+    super.initState();
+    subscription = auth.onAuthStateChange.listen((state) {
+      if (!mounted) return;
+      setState(() {
+        if (state.event == AuthChangeEvent.passwordRecovery) recovery = true;
+        if (state.event == AuthChangeEvent.signedOut) recovery = false;
+      });
+    }, onError: (Object error) {});
+  }
+  @override
+  void dispose() { subscription.cancel(); super.dispose(); }
+  @override
+  Widget build(BuildContext context) {
+    final session = auth.currentSession;
+    if (recovery) return LoginPage(recovery: true, onRecovered: () => setState(() => recovery = false));
+    if (session == null) return const LoginPage();
+    return WelcomeGate(key: ValueKey(session.user.id), userId: session.user.id);
+  }
+}
+
 class WelcomeGate extends StatefulWidget {
-  const WelcomeGate({super.key});
+  const WelcomeGate({super.key, required this.userId});
+  final String userId;
   @override
   State<WelcomeGate> createState() => _WelcomeGateState();
 }
 
 class _WelcomeGateState extends State<WelcomeGate> {
-  late final Future<Map<String, Object?>?> _business = LocalDatabase.instance.firstBusiness();
+  late final Future<Map<String, Object?>?> _business = LocalDatabase.forUser(widget.userId).firstBusiness();
   @override
   Widget build(BuildContext context) => FutureBuilder<Map<String, Object?>?>(
     future: _business,
@@ -35,13 +71,14 @@ class _WelcomeGateState extends State<WelcomeGate> {
         return const Scaffold(body: Center(child: CircularProgressIndicator()));
       }
       final business = snapshot.data;
-      return business == null ? const BusinessRegisterPage() : HomePage(businessName: business['name'] as String);
+      return business == null ? BusinessRegisterPage(userId: widget.userId) : HomePage(businessName: business['name'] as String);
     },
   );
 }
 
 class BusinessRegisterPage extends StatefulWidget {
-  const BusinessRegisterPage({super.key});
+  const BusinessRegisterPage({super.key, required this.userId});
+  final String userId;
   @override
   State<BusinessRegisterPage> createState() => _BusinessRegisterPageState();
 }
@@ -55,6 +92,7 @@ class _BusinessRegisterPageState extends State<BusinessRegisterPage> {
   final _address = TextEditingController();
   final _segment = TextEditingController();
   bool _saving = false;
+  String? _registeredName;
 
   @override
   void dispose() {
@@ -68,7 +106,7 @@ class _BusinessRegisterPageState extends State<BusinessRegisterPage> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     try {
-      await LocalDatabase.instance.registerBusiness(
+      await LocalDatabase.forUser(widget.userId).registerBusiness(
         name: _name.text,
         document: _document.text,
         phone: _phone.text,
@@ -77,9 +115,7 @@ class _BusinessRegisterPageState extends State<BusinessRegisterPage> {
         segment: _segment.text,
       );
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(MaterialPageRoute(
-        builder: (_) => HomePage(businessName: _name.text.trim()),
-      ));
+      setState(() => _registeredName = _name.text.trim());
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao salvar empresa: $e')));
     } finally {
@@ -88,8 +124,8 @@ class _BusinessRegisterPageState extends State<BusinessRegisterPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Cadastrar minha empresa')),
+  Widget build(BuildContext context) => _registeredName != null ? HomePage(businessName: _registeredName!) : Scaffold(
+    appBar: AppBar(title: const Text('Cadastrar minha empresa'), actions: [IconButton(onPressed: () => Supabase.instance.client.auth.signOut(), icon: const Icon(Icons.logout))]),
     body: SafeArea(
       child: Form(
         key: _formKey,
@@ -157,7 +193,7 @@ class HomePage extends StatelessWidget {
           )).toList())),
       ])),
     ),
-    appBar: AppBar(title: const Text('Início')),
+    appBar: AppBar(title: const Text('Início'), actions: [IconButton(onPressed: () => Supabase.instance.client.auth.signOut(), icon: const Icon(Icons.logout), tooltip: 'Sair')]),
     body: ListView(children: [
       Container(
         color: MarkysTheme.dark,
