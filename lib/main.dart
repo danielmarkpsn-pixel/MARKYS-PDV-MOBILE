@@ -6,6 +6,7 @@ import 'data/local_database.dart';
 import 'theme.dart';
 import 'products_page.dart';
 import 'customers_page.dart';
+import 'sales_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -177,6 +178,7 @@ class _HomePageState extends State<HomePage> {
     }catch(_){if(mounted)setState(()=>stockSummary='Não foi possível carregar estoque');}
   }
   Future<void> openProducts() async {await Navigator.of(context).push(MaterialPageRoute(builder:(_)=>ProductsPage(userId:userId)));if(mounted)await refreshStock();}
+  Future<void> openSales() async { await Navigator.of(context).push(MaterialPageRoute(builder: (_) => SalesPage(userId: userId))); if (mounted) await refreshStock(); }
   static const sections = <(IconData, String)>[
     (Icons.home_outlined, 'Início'),
     (Icons.shopping_cart_outlined, 'Vender'),
@@ -209,6 +211,8 @@ class _HomePageState extends State<HomePage> {
               Navigator.pop(context);
               if (section.$2 == 'Produtos') {
                 openProducts();
+              } else if (section.$2 == 'Vender') {
+                openSales();
               } else if (section.$2 == 'Clientes') {
                 Navigator.of(context).push(MaterialPageRoute(builder: (_) => CustomersPage(userId: userId)));
               } else if (section.$2 != 'Início') {
@@ -238,9 +242,7 @@ class _HomePageState extends State<HomePage> {
           ]),
           const SizedBox(height: 18),
           SizedBox(width: double.infinity, child: FilledButton(
-            onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Tela de venda: próxima etapa')),
-            ),
+            onPressed: openSales,
             child: const Text('Registrar venda'),
           )),
         ]),
