@@ -151,11 +151,31 @@ class _BusinessRegisterPageState extends State<BusinessRegisterPage> {
   );
 }
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   final String businessName;
   final String userId;
   const HomePage({super.key, required this.businessName, required this.userId});
 
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+class _HomePageState extends State<HomePage> {
+  String get userId => widget.userId;
+  String get businessName => widget.businessName;
+  String stockSummary = 'Carregando estoque...';
+  @override
+  void initState(){super.initState();refreshStock();}
+  Future<void> refreshStock() async {
+    try {
+      final local=LocalDatabase.forUser(userId);
+      final business=await local.firstBusiness();
+      final rows=await (await local.database).rawQuery('SELECT COUNT(*) AS total, COALESCE(SUM(stock * cost_cents),0) AS value, COALESCE(SUM(CASE WHEN stock <= min_stock THEN 1 ELSE 0 END),0) AS low FROM products WHERE business_id = ? AND active = 1',[business?['id']]);
+      final r=rows.first;
+      final value=((r['value'] as num)/100).toStringAsFixed(2).replaceAll('.',',');
+      if(mounted)setState(()=>stockSummary='Valor de custo em estoque: R\\$ $value\\n${r['total']} produtos ativos • ${r['low']} com estoque baixo');
+    }catch(_){if(mounted)setState(()=>stockSummary='Não foi possível carregar estoque');}
+  }
+  Future<void> openProducts() async {await Navigator.of(context).push(MaterialPageRoute(builder:(_)=>ProductsPage(userId:userId)));if(mounted)await refreshStock();}
   static const sections = <(IconData, String)>[
     (Icons.home_outlined, 'Início'),
     (Icons.shopping_cart_outlined, 'Vender'),
@@ -187,7 +207,7 @@ class HomePage extends StatelessWidget {
             onTap: () {
               Navigator.pop(context);
               if (section.$2 == 'Produtos') {
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => ProductsPage(userId: userId)));
+                openProducts();
               } else if (section.$2 != 'Início') {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text('Módulo ${section.$2}: em desenvolvimento')),
@@ -223,9 +243,9 @@ class HomePage extends StatelessWidget {
         ]),
       ),
       Padding(padding: const EdgeInsets.all(12), child: _HomeCard(
-        onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ProductsPage(userId: userId))),
+        onPressed: openProducts,
         icon: Icons.inventory_2_outlined, title: 'Estoque',
-        content: 'Valor em estoque: R\$ 0,00\nNenhum produto cadastrado',
+        content: stockSummary,
         button: '+ Cadastrar produto',
       )),
       const Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: _HomeCard(
