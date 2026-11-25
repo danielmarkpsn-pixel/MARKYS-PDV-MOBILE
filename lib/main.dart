@@ -8,6 +8,7 @@ import 'products_page.dart';
 import 'customers_page.dart';
 import 'sales_page.dart';
 import 'commerce_page.dart';
+import 'reports_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -228,6 +229,8 @@ class _HomePageState extends State<HomePage> {
                 openSales();
               } else if (['Pedidos','Finanças','Histórico'].contains(section.$2)) {
                 openCommerce(section.$2);
+              } else if (section.$2 == 'Estatísticas') {
+                Navigator.push(context,MaterialPageRoute(builder:(_)=>ReportsPage(userId:userId)));
               } else if (section.$2 == 'Clientes') {
                 Navigator.of(context).push(MaterialPageRoute(builder: (_) => CustomersPage(userId: userId)));
               } else if (section.$2 != 'Início') {
