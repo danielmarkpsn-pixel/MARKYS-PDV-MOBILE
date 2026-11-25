@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'data/local_database.dart';
 import 'products_page.dart';
@@ -6,7 +7,9 @@ import 'stock_tools.dart';
 String saleMoney(int cents) => 'R\$ ${(cents / 100).toStringAsFixed(2).replaceAll('.', ',')}';
 
 class SalesPage extends StatefulWidget {
-  const SalesPage({super.key, required this.userId});
+  const SalesPage({super.key, required this.userId,this.orderId,this.initialCart});
+  final int? orderId;
+  final Map<int,int>? initialCart;
   final String userId;
   @override
   State<SalesPage> createState() => _SalesPageState();
@@ -20,7 +23,7 @@ class _SalesPageState extends State<SalesPage> {
   bool loading = true;
   String? error;
   @override
-  void initState(){super.initState();load();}
+  void initState(){super.initState();cart.addAll(widget.initialCart??{});load();}
   @override
   void dispose(){search.dispose();super.dispose();}
   Future<void> load() async {
@@ -49,15 +52,20 @@ class _SalesPageState extends State<SalesPage> {
   }
   Future<void> checkout() async {
     if(cart.isEmpty||businessId==null)return;
-    final result=await Navigator.push<int>(context,MaterialPageRoute(builder:(_)=>CheckoutPage(local:local,businessId:businessId!,products:products,customers:customers,cart:Map.of(cart))));
+    final result=await Navigator.push<int>(context,MaterialPageRoute(builder:(_)=>CheckoutPage(local:local,businessId:businessId!,products:products,customers:customers,cart:cart,orderId:widget.orderId)));
     if(!mounted)return;
+    if(result!=null && widget.orderId!=null){Navigator.pop(context);return;}
     if(result!=null){setState(()=>cart.clear());await load();if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Venda #$result registrada com sucesso')));}
+  }
+  Future<void> saveOrder() async {
+    if(cart.isEmpty||businessId==null)return;
+    try{final db=await local.database;final data={'business_id':businessId,'cart_json':jsonEncode(cart.map((k,v)=>MapEntry(k.toString(),v))),'created_at':DateTime.now().toIso8601String()};if(widget.orderId==null){await db.insert('open_orders',data);}else{await db.update('open_orders',data,where:'id = ? AND business_id = ?',whereArgs:[widget.orderId,businessId]);}if(mounted)Navigator.pop(context);}catch(_){if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Não foi possível salvar pedido')));}
   }
   @override
   Widget build(BuildContext context){
     final q=search.text.trim().toLowerCase();
     final filtered=products.where((p)=>['name','barcode','sku','category'].any((k)=>(p[k]?.toString()??'').toLowerCase().contains(q))).toList();
-    return Scaffold(appBar:AppBar(title:const Text('Frente de caixa')),body:loading?const Center(child:CircularProgressIndicator()):error!=null?Center(child:TextButton(onPressed:load,child:Text(error!))):Column(children:[
+    return Scaffold(appBar:AppBar(title:const Text('Frente de caixa'),actions:[IconButton(onPressed:cart.isEmpty?null:saveOrder,icon:const Icon(Icons.save_outlined),tooltip:'Salvar pedido em aberto')]),body:loading?const Center(child:CircularProgressIndicator()):error!=null?Center(child:TextButton(onPressed:load,child:Text(error!))):Column(children:[
       Padding(padding:const EdgeInsets.all(8),child:Row(children:[Expanded(child:TextField(controller:search,onChanged:(_)=>setState((){}),decoration:const InputDecoration(prefixIcon:Icon(Icons.search),hintText:'Pesquisar produtos'))),IconButton(onPressed:scan,icon:const Icon(Icons.qr_code_scanner))])),
       Expanded(child:filtered.isEmpty?const Center(child:Text('Nenhum produto encontrado')):GridView.builder(padding:const EdgeInsets.all(8),gridDelegate:const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:3,mainAxisExtent:170,crossAxisSpacing:6,mainAxisSpacing:6),itemCount:filtered.length,itemBuilder:(_,i){
         final p=filtered[i];final qty=cart[p['id']]??0;
@@ -75,7 +83,8 @@ class _SalesPageState extends State<SalesPage> {
 }
 
 class CheckoutPage extends StatefulWidget {
-  const CheckoutPage({super.key,required this.local,required this.businessId,required this.products,required this.customers,required this.cart});
+  const CheckoutPage({super.key,required this.local,required this.businessId,required this.products,required this.customers,required this.cart,this.orderId});
+  final int? orderId;
   final LocalDatabase local;
   final int businessId;
   final List<Map<String,Object?>> products,customers;
@@ -86,6 +95,7 @@ class CheckoutPage extends StatefulWidget {
 class _CheckoutPageState extends State<CheckoutPage>{
   final discount=TextEditingController(text:'0');
   final received=TextEditingController();
+  final parts={for(final m in ['Pix','Dinheiro','Débito','Crédito','Fiado'])m:TextEditingController(text:'0')};
   int? customer;
   String payment='Pix';
   bool busy=false;
@@ -93,13 +103,15 @@ class _CheckoutPageState extends State<CheckoutPage>{
   int? parse(String s){final n=double.tryParse(s.trim().replaceAll(',','.'));return n==null||!n.isFinite||n<0||n>999999999?null:(n*100).round();}
   int get total=>subtotal-(parse(discount.text)??0);
   @override
-  void dispose(){discount.dispose();received.dispose();super.dispose();}
+  void dispose(){discount.dispose();received.dispose();for(final c in parts.values){c.dispose();}super.dispose();}
   Future<void> finish() async {
     final d=parse(discount.text);
     if(busy||widget.cart.isEmpty||d==null||d>subtotal||payment=='Dinheiro'&&(parse(received.text)??-1)<total){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Confira o carrinho, desconto e pagamento')));return;}
+    final split=payment=='Combinado'?{for(final e in parts.entries)e.key:parse(e.value.text)??-1}:<String,int>{payment:total};
+    if(split.values.any((v)=>v<0)||split.values.fold<int>(0,(a,b)=>a+b)!=total||(split['Fiado']??0)>0&&customer==null){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Confira a divisão do pagamento e o cliente do fiado')));return;}
     setState(()=>busy=true);
     try{
-      final id=await widget.local.finishSale(widget.businessId,customer,widget.cart,d,payment);
+      final id=await widget.local.finishSale(widget.businessId,customer,widget.cart,d,payment,split:split,orderId:widget.orderId);
       if(mounted)Navigator.pop(context,id);
     }catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(e is StateError?e.message.toString():'Não foi possível finalizar a venda')));}
     finally{if(mounted)setState(()=>busy=false);}
@@ -117,7 +129,8 @@ class _CheckoutPageState extends State<CheckoutPage>{
     DropdownButtonFormField<int>(value:customer,isExpanded:true,decoration:const InputDecoration(labelText:'Cliente'),items:[const DropdownMenuItem<int>(value:null,child:Text('Consumidor final')),...widget.customers.map((c)=>DropdownMenuItem<int>(value:c['id'] as int,child:Text(c['name'].toString(),overflow:TextOverflow.ellipsis)))],onChanged:busy?null:(v)=>setState(()=>customer=v)),
     Text('Subtotal: ${saleMoney(subtotal)}'),
     TextField(controller:discount,enabled:!busy,keyboardType:const TextInputType.numberWithOptions(decimal:true),onChanged:(_)=>setState((){}),decoration:const InputDecoration(labelText:'Desconto em reais')),
-    DropdownButtonFormField<String>(value:payment,decoration:const InputDecoration(labelText:'Pagamento'),items:['Pix','Dinheiro','Débito','Crédito'].map((v)=>DropdownMenuItem(value:v,child:Text(v))).toList(),onChanged:busy?null:(v)=>setState(()=>payment=v!)),
+    DropdownButtonFormField<String>(value:payment,decoration:const InputDecoration(labelText:'Pagamento'),items:['Pix','Dinheiro','Débito','Crédito','Fiado','Combinado'].map((v)=>DropdownMenuItem(value:v,child:Text(v))).toList(),onChanged:busy?null:(v)=>setState(()=>payment=v!)),
+    if(payment=='Combinado')...parts.entries.map((e)=>TextField(controller:e.value,enabled:!busy,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:InputDecoration(labelText:e.key))),
     if(payment=='Dinheiro')...[
       TextField(controller:received,enabled:!busy,keyboardType:const TextInputType.numberWithOptions(decimal:true),onChanged:(_)=>setState((){}),decoration:const InputDecoration(labelText:'Valor recebido')),
       Text('Troco: ${saleMoney(((parse(received.text)??0)-total).clamp(0,999999999).toInt())}'),
