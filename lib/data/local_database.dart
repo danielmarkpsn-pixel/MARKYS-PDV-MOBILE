@@ -17,7 +17,8 @@ class LocalDatabase {
     if (_db != null) return _db!;
     _db = await openDatabase(
       join(await getDatabasesPath(), 'markys_pdv_$userId.db'),
-      version: 1,
+      version: 2,
+      onUpgrade: (db, old, version) async { if (old < 2) await upgradeStock(db); },
       onConfigure: (db) async => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: (db, version) async {
         await db.execute('''
@@ -82,12 +83,32 @@ class LocalDatabase {
             FOREIGN KEY (product_id) REFERENCES products(id)
           )
         ''');
+        await upgradeStock(db);
         await db.execute('CREATE INDEX idx_products_business ON products(business_id)');
         await db.execute('CREATE INDEX idx_sales_business_date ON sales(business_id, created_at)');
       },
     );
     await _db!.execute('PRAGMA foreign_keys = ON');
     return _db!;
+  }
+
+  Future<void> upgradeStock(Database db) async {
+    await db.execute('ALTER TABLE products ADD COLUMN min_stock INTEGER NOT NULL DEFAULT 0');
+    await db.execute('CREATE TABLE categories (id INTEGER PRIMARY KEY, business_id INTEGER NOT NULL REFERENCES businesses(id), name TEXT NOT NULL COLLATE NOCASE, UNIQUE(business_id,name))');
+    await db.execute("INSERT OR IGNORE INTO categories(business_id,name) SELECT business_id,trim(category) FROM products WHERE trim(category) <> ''");
+    await db.execute('CREATE TABLE stock_movements (id INTEGER PRIMARY KEY, product_id INTEGER NOT NULL REFERENCES products(id), business_id INTEGER NOT NULL REFERENCES businesses(id), delta INTEGER NOT NULL, reason TEXT NOT NULL, created_at TEXT NOT NULL)');
+  }
+
+  Future<void> moveStock(int businessId, int productId, int delta, String reason) async {
+    if (delta == 0) return;
+    await (await database).transaction((tx) async {
+      final rows = await tx.query('products', where: 'id = ? AND business_id = ?', whereArgs: [productId,businessId]);
+      if (rows.isEmpty) throw StateError('Produto não encontrado');
+      final next = (rows.first['stock'] as int) + delta;
+      if (next < 0 || next > 2147483647) throw StateError('Quantidade inválida ou estoque insuficiente');
+      await tx.update('products', {'stock':next}, where: 'id = ? AND business_id = ?', whereArgs: [productId,businessId]);
+      await tx.insert('stock_movements', {'product_id':productId,'business_id':businessId,'delta':delta,'reason':reason,'created_at':DateTime.now().toIso8601String()});
+    });
   }
 
   Future<Map<String, Object?>?> firstBusiness() async {
