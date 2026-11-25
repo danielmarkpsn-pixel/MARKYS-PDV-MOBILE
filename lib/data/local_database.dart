@@ -17,8 +17,8 @@ class LocalDatabase {
     if (_db != null) return _db!;
     _db = await openDatabase(
       join(await getDatabasesPath(), 'markys_pdv_$userId.db'),
-      version: 2,
-      onUpgrade: (db, old, version) async { if (old < 2) await upgradeStock(db); },
+      version: 3,
+      onUpgrade: (db, old, version) async { if (old < 2) await upgradeStock(db); if (old < 3) await upgradeCustomers(db); },
       onConfigure: (db) async => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: (db, version) async {
         await db.execute('''
@@ -84,12 +84,21 @@ class LocalDatabase {
           )
         ''');
         await upgradeStock(db);
+        await upgradeCustomers(db);
         await db.execute('CREATE INDEX idx_products_business ON products(business_id)');
         await db.execute('CREATE INDEX idx_sales_business_date ON sales(business_id, created_at)');
       },
     );
     await _db!.execute('PRAGMA foreign_keys = ON');
     return _db!;
+  }
+
+  Future<void> upgradeCustomers(Database db) async {
+    await db.execute('ALTER TABLE customers ADD COLUMN address TEXT');
+    await db.execute('ALTER TABLE customers ADD COLUMN notes TEXT');
+    await db.execute('ALTER TABLE customers ADD COLUMN whatsapp TEXT');
+    await db.execute('ALTER TABLE customers ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
+    await db.execute('CREATE INDEX idx_customers_business ON customers(business_id)');
   }
 
   Future<void> upgradeStock(Database db) async {
