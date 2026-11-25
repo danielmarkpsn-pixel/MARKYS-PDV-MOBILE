@@ -5,6 +5,7 @@ import 'auth/login_page.dart';
 import 'data/local_database.dart';
 import 'theme.dart';
 import 'products_page.dart';
+import 'customers_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -208,6 +209,8 @@ class _HomePageState extends State<HomePage> {
               Navigator.pop(context);
               if (section.$2 == 'Produtos') {
                 openProducts();
+              } else if (section.$2 == 'Clientes') {
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => CustomersPage(userId: userId)));
               } else if (section.$2 != 'Início') {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text('Módulo ${section.$2}: em desenvolvimento')),
