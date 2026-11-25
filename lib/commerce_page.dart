@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'data/local_database.dart';
 import 'sales_page.dart';
+import 'receipt_page.dart';
 
 class CommercePage extends StatefulWidget {
   const CommercePage({super.key,required this.userId,required this.mode});
@@ -50,7 +51,7 @@ class _CommercePageState extends State<CommercePage>{
       const Divider(),Text('Desconto: ${saleMoney(r['discount_cents'] as int)}'),
       ...payments.where((p)=>(p['amount'] as int)>0).map((p)=>Text('${p['method']}: ${saleMoney(p['amount'] as int)}')),
       Text('Total: ${saleMoney(r['total_cents'] as int)}'),
-    ])),actions:[TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('Fechar'))]));
+    ])),actions:[TextButton(onPressed:(){Navigator.pop(ctx);openReceipt(context,local,businessId!,r['id'] as int);},child:const Text('Comprovante')),TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('Fechar'))]));
   }
   Future<void> receive(Map<String,Object?> r) async{
     String value='',method='Pix';
