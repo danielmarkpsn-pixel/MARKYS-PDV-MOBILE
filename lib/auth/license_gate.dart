@@ -87,19 +87,19 @@ class _LicenseGateState extends State<LicenseGate> with WidgetsBindingObserver {
       request.headers.contentType=ContentType.json;
       request.write(jsonEncode({'device_id':device}));
       final response=await request.close().timeout(const Duration(seconds:15));
-      final data=jsonDecode(await response.transform(utf8.decoder).join().timeout(const Duration(seconds:15)));
       transient=response.statusCode>=500;
+      final data=jsonDecode(await response.transform(utf8.decoder).join().timeout(const Duration(seconds:15)));
       if(response.statusCode==200 && data is Map){
         ok=data['allowed']==true;
-        await storage.delete(key:cacheKey);
+        try {await storage.delete(key:cacheKey);}catch(_){}
         final token=data['offline_lease'];
         if(ok&&token is String&&started!=null&&LeaseVerifier.verify(token,widget.userId,device)!=null){
-          await storage.write(key:cacheKey,value:jsonEncode({'token':token,'boot':started['boot'],'elapsed':started['elapsed']}));
+          try {await storage.write(key:cacheKey,value:jsonEncode({'token':token,'boot':started['boot'],'elapsed':started['elapsed']}));}catch(_){}
           offlineRemaining=await remaining(device);
         }
-        message=const {'not_registered':'Licença ainda não cadastrada.','pending':'Licença aguardando ativação.','blocked':'Licença bloqueada.','expired':'Licença vencida.','device_limit':'Limite de dispositivos atingido.','not_started':'Licença ainda não iniciada.','missing_expiration':'Validade da licença não configurada.'}[data['reason']]??'Licença não autorizada.';
+        message=const {'profile_required':'Cadastro incompleto: nome, telefone e CPF/CNPJ necessários.','email_unconfirmed':'Confirme seu e-mail.','trial_registration_failed':'Não foi possível cadastrar o período de teste. Contate o suporte.','not_registered':'Licença ainda não cadastrada.','pending':'Licença aguardando ativação.','blocked':'Licença bloqueada.','expired':'Licença vencida.','device_limit':'Limite de dispositivos atingido.','not_started':'Licença ainda não iniciada.','missing_expiration':'Validade da licença não configurada.'}[data['reason']]??'Licença não autorizada.';
       }
-      else if(!transient){await storage.delete(key:cacheKey);}
+      else if(!transient){await storage.delete(key:cacheKey);message='Falha na validação (HTTP ${response.statusCode}). Entre novamente ou contate o suporte.';}
     }on SocketException{transient=true;}on TimeoutException{transient=true;}catch(_){ok=false;}finally{client.close(force:true);}
     if(transient&&device!=null){
       offlineRemaining=await remaining(device);
