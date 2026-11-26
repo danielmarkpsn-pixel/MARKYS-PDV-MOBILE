@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth/login_page.dart';
 import 'auth/license_gate.dart';
+import 'auth/payment_page.dart';
 import 'data/local_database.dart';
 import 'theme.dart';
 import 'products_page.dart';
@@ -209,6 +210,7 @@ class _HomePageState extends State<HomePage> {
     (Icons.bar_chart_outlined, 'Estatísticas'),
     (Icons.manage_accounts_outlined, 'Usuários'),
     (Icons.settings_outlined, 'Configurações'),
+    (Icons.payment_outlined, 'Planos e pagamentos'),
     (Icons.help_outline, 'Ajuda'),
   ];
 
@@ -232,6 +234,8 @@ class _HomePageState extends State<HomePage> {
                 openSales();
               } else if (['Pedidos','Finanças','Histórico'].contains(section.$2)) {
                 openCommerce(section.$2);
+              } else if (section.$2 == 'Planos e pagamentos') {
+                Navigator.push(context,MaterialPageRoute(builder:(_)=>const PaymentPage()));
               } else if (section.$2 == 'Configurações') {
                 Navigator.push(context,MaterialPageRoute(builder:(_)=>SettingsPage(userId:userId))).then((_) {if(mounted)refreshStock();});
               } else if (section.$2 == 'Estatísticas') {
