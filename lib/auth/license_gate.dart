@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'lease_verifier.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,7 +19,29 @@ class LicenseGate extends StatefulWidget {
 class _LicenseGateState extends State<LicenseGate> with WidgetsBindingObserver {
   bool allowed=false, busy=false;
   String reason='Verificando licença...';
-  Timer? timer;
+  Timer? timer, deadline;
+  final storage=const FlutterSecureStorage();
+  String get cacheKey=>'markys_lease_${widget.userId}';
+  Future<Map<dynamic,dynamic>> clock() async =>
+    (await const MethodChannel('markys/license_clock').invokeMapMethod<dynamic,dynamic>('snapshot'))!;
+  Future<int> remaining(String device) async {
+    try {
+      final raw=await storage.read(key:cacheKey);
+      if(raw==null)return 0;
+      final record=jsonDecode(raw);
+      final lifetime=LeaseVerifier.verify(record['token'] as String,widget.userId,device);
+      final now=await clock();
+      final start=record['elapsed'] as int;
+      final elapsed=now['elapsed'] as int;
+      if(lifetime==null||now['boot']!=record['boot']||elapsed<start)return 0;
+      return max(0,lifetime*1000-(elapsed-start)-1000);
+    }catch(_){return 0;}
+  }
+  void expire(){
+    if(!mounted)return;
+    if(allowed)Navigator.of(context).popUntil((route)=>route.isFirst);
+    setState((){allowed=false;reason='Validação online necessária.';});
+  }
   @override
   void initState(){
     super.initState();
@@ -30,7 +54,7 @@ class _LicenseGateState extends State<LicenseGate> with WidgetsBindingObserver {
     if(state==AppLifecycleState.resumed) check();
   }
   @override
-  void dispose(){timer?.cancel();WidgetsBinding.instance.removeObserver(this);super.dispose();}
+  void dispose(){timer?.cancel();deadline?.cancel();WidgetsBinding.instance.removeObserver(this);super.dispose();}
   Future<String> deviceId() async {
     final prefs=await SharedPreferences.getInstance();
     final old=prefs.getString('markys_license_device');
@@ -47,22 +71,41 @@ class _LicenseGateState extends State<LicenseGate> with WidgetsBindingObserver {
     if(busy||!mounted)return;
     setState(()=>busy=true);
     final client=HttpClient()..connectionTimeout=const Duration(seconds:10);
-    bool ok=false;
+    bool ok=false, transient=false;
+    int offlineRemaining=0;
+    String? device;
+    Map<dynamic,dynamic>? started;
     String message='Não foi possível validar a licença. Conecte-se à internet e tente novamente.';
     try {
       final session=Supabase.instance.client.auth.currentSession;
       if(session==null||session.user.id!=widget.userId)throw StateError('Sessão inválida');
+      device=await deviceId();
+      try{started=await clock();}catch(_){}
       final request=await client.postUrl(Uri.parse('https://xwzxgazwqehcpyhrbord.supabase.co/functions/v1/validate-license')).timeout(const Duration(seconds:15));
       request.headers.set('Authorization','Bearer ${session.accessToken}');
       request.headers.contentType=ContentType.json;
-      request.write(jsonEncode({'device_id':await deviceId()}));
+      request.write(jsonEncode({'device_id':device}));
       final response=await request.close().timeout(const Duration(seconds:15));
       final data=jsonDecode(await response.transform(utf8.decoder).join().timeout(const Duration(seconds:15)));
+      transient=response.statusCode>=500;
       if(response.statusCode==200 && data is Map){
         ok=data['allowed']==true;
+        await storage.delete(key:cacheKey);
+        final token=data['offline_lease'];
+        if(ok&&token is String&&started!=null&&LeaseVerifier.verify(token,widget.userId,device)!=null){
+          await storage.write(key:cacheKey,value:jsonEncode({'token':token,'boot':started['boot'],'elapsed':started['elapsed']}));
+          offlineRemaining=await remaining(device);
+        }
         message=const {'not_registered':'Licença ainda não cadastrada.','pending':'Licença aguardando ativação.','blocked':'Licença bloqueada.','expired':'Licença vencida.','device_limit':'Limite de dispositivos atingido.','not_started':'Licença ainda não iniciada.','missing_expiration':'Validade da licença não configurada.'}[data['reason']]??'Licença não autorizada.';
       }
-    }catch(_){}finally{client.close(force:true);}
+      else if(!transient){await storage.delete(key:cacheKey);}
+    }on SocketException{transient=true;}on TimeoutException{transient=true;}catch(_){ok=false;}finally{client.close(force:true);}
+    if(transient&&device!=null){
+      offlineRemaining=await remaining(device);
+      ok=offlineRemaining>0;
+    }
+    deadline?.cancel();
+    if(ok)deadline=Timer(Duration(milliseconds:offlineRemaining>0?offlineRemaining:300000),expire);
     if(!mounted)return;
     if(!ok && allowed) Navigator.of(context).popUntil((route)=>route.isFirst);
     setState((){allowed=ok;reason=message;busy=false;});
