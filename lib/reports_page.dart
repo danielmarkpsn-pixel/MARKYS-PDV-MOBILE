@@ -56,7 +56,7 @@ class _ReportsPageState extends State<ReportsPage>{
         const Text('Produtos mais vendidos (unidades)'),
         ...items.map((i)=>ListTile(title:Text(i['name'].toString()),subtitle:LinearProgressIndicator(value:(i['quantity'] as num)/(items.first['quantity'] as num)),trailing:Text('${i['quantity']}'))),
         const Divider(),const Text('Formas de pagamento na venda'),
-        ...payments.map((p)=>ListTile(title:Text(p['method'].toString()),trailing:Text(saleMoney(p['amount'] as int)))),
+        ...payments.map((p)=>Padding(padding:const EdgeInsets.symmetric(vertical:8),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[Row(children:[Expanded(child:Text(p['method'].toString())),Text(saleMoney(p['amount'] as int))]),const SizedBox(height:6),LinearProgressIndicator(minHeight:16,borderRadius:BorderRadius.circular(4),value:(payments.first['amount'] as int)>0?(p['amount'] as int)/(payments.first['amount'] as int):0.0)]))),
       ],
     ]));
   }
