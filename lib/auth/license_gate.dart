@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'lease_verifier.dart';
+import 'payment_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -124,6 +125,7 @@ class _LicenseGateState extends State<LicenseGate> with WidgetsBindingObserver {
       SelectableText(widget.userId),
       TextButton(onPressed:()=>Clipboard.setData(ClipboardData(text:widget.userId)),child:const Text('Copiar código')),
       FilledButton(onPressed:busy?null:check,child:const Text('Verificar licença')),
+      OutlinedButton(onPressed:busy?null:() async {await Navigator.of(context).push(MaterialPageRoute(builder:(_)=>const PaymentPage()));if(mounted)await check();},child:const Text('Planos e pagamentos')),
       TextButton(onPressed:()=>Supabase.instance.client.auth.signOut(),child:const Text('Sair')),
     ])))));
   }
