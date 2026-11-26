@@ -9,6 +9,7 @@ import 'customers_page.dart';
 import 'sales_page.dart';
 import 'commerce_page.dart';
 import 'reports_page.dart';
+import 'settings_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -165,7 +166,8 @@ class HomePage extends StatefulWidget {
 }
 class _HomePageState extends State<HomePage> {
   String get userId => widget.userId;
-  String get businessName => widget.businessName;
+  String? updatedBusinessName;
+  String get businessName => updatedBusinessName ?? widget.businessName;
   int today=0,yesterday=0,month=0,count=0,orders=0;
   String stockSummary = 'Carregando estoque...';
   @override
@@ -186,7 +188,7 @@ class _HomePageState extends State<HomePage> {
       final pending=await db.query('open_orders',where:'business_id = ?',whereArgs:[business?['id']]);
       int t=0,y=0,m=0,n=0;
       for(final s in sales){final date=DateTime.tryParse(s['created_at'].toString());if(date==null)continue;final amount=s['total_cents'] as int;if(!date.isBefore(day)){t+=amount;n++;}else if(!date.isBefore(prev)){y+=amount;}if(!date.isBefore(start))m+=amount;}
-      if(mounted)setState((){today=t;yesterday=y;month=m;count=n;orders=pending.length;});
+      if(mounted)setState((){today=t;yesterday=y;month=m;count=n;orders=pending.length;updatedBusinessName=business?['name'] as String?;});
       if(mounted)setState(()=>stockSummary='Valor de custo em estoque: R\$ $value\n${r['total']} produtos ativos • ${r['low']} com estoque baixo');
     }catch(_){if(mounted)setState(()=>stockSummary='Não foi possível carregar estoque');}
   }
@@ -229,6 +231,8 @@ class _HomePageState extends State<HomePage> {
                 openSales();
               } else if (['Pedidos','Finanças','Histórico'].contains(section.$2)) {
                 openCommerce(section.$2);
+              } else if (section.$2 == 'Configurações') {
+                Navigator.push(context,MaterialPageRoute(builder:(_)=>SettingsPage(userId:userId))).then((_) {if(mounted)refreshStock();});
               } else if (section.$2 == 'Estatísticas') {
                 Navigator.push(context,MaterialPageRoute(builder:(_)=>ReportsPage(userId:userId)));
               } else if (section.$2 == 'Clientes') {
