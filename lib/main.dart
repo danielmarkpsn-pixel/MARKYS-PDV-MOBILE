@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth/login_page.dart';
+import 'auth/license_gate.dart';
 import 'data/local_database.dart';
 import 'theme.dart';
 import 'products_page.dart';
@@ -55,7 +56,7 @@ class _AuthGateState extends State<AuthGate> {
     final session = auth.currentSession;
     if (recovery) return LoginPage(recovery: true, onRecovered: () => setState(() => recovery = false));
     if (session == null) return const LoginPage();
-    return WelcomeGate(key: ValueKey(session.user.id), userId: session.user.id);
+    return LicenseGate(key: ValueKey(session.user.id), userId: session.user.id, child: WelcomeGate(userId: session.user.id));
   }
 }
 
