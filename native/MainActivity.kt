@@ -15,6 +15,14 @@ class MainActivity : FlutterActivity() {
     private var pending: MethodChannel.Result? = null
     override fun configureFlutterEngine(engine: FlutterEngine) {
         super.configureFlutterEngine(engine)
+        MethodChannel(engine.dartExecutor.binaryMessenger, "markys/license_clock").setMethodCallHandler { call, result ->
+            if (call.method != "snapshot") result.notImplemented()
+            else try {
+                val boot = android.provider.Settings.Global.getInt(contentResolver, "boot_count", -1)
+                if (boot < 0) result.error("CLOCK", "Inicialização não verificável", null)
+                else result.success(mapOf("boot" to boot, "elapsed" to android.os.SystemClock.elapsedRealtime()))
+            } catch (e: Exception) { result.error("CLOCK", "Relógio indisponível", null) }
+        }
         MethodChannel(engine.dartExecutor.binaryMessenger, "markys/printer").setMethodCallHandler { call, result ->
             if (call.method == "permission") {
                 if (Build.VERSION.SDK_INT < 31 || checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) result.success(true)
