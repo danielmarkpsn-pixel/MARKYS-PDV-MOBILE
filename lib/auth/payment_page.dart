@@ -43,7 +43,7 @@ class _PaymentPageState extends State<PaymentPage>{
   try{
    final d=await request('asaas-catalog',{});
    if(!mounted)return;
-   setState((){plans=d['plans'] as List? ?? [];charges=d['charges'] as List? ?? [];message='';});
+   setState((){plans=d['plans'] as List? ?? [];charges=d['charges'] as List? ?? [];});
   }catch(e){if(mounted)setState(()=>message='Falha ao consultar cobranças. Tente atualizar.');}
   finally{if(mounted)setState(()=>busy=false);}
  }
@@ -54,7 +54,7 @@ class _PaymentPageState extends State<PaymentPage>{
    final d=await request('asaas-create-payment',{'plan_id':plan});
    if(mounted)setState(()=>pix=d);
   }catch(e){if(mounted)setState(()=>message=e.toString());}
-  finally{if(mounted){setState(()=>busy=false);await load();}}
+  finally{if(mounted){setState(()=>busy=false);final previous=message;await load();if(mounted&&previous.isNotEmpty)setState(()=>message=previous);}}
  }
  String money(dynamic cents)=>'R\$ ${((num.tryParse('$cents')??0)/100).toStringAsFixed(2).replaceAll('.',',')}';
  bool get open=>charges.any((q)=>['creating','pending','received'].contains(q['status']));
@@ -65,8 +65,8 @@ class _PaymentPageState extends State<PaymentPage>{
    const Text('SANDBOX — somente testes. Não efetue pagamentos reais.',style:TextStyle(fontWeight:FontWeight.bold)),
    if(busy)const LinearProgressIndicator(),
    if(message.isNotEmpty)Text(message),
-   for(final p in plans) RadioListTile<String>(value:p['id'].toString(),groupValue:plan,onChanged:busy||open?null:(v)=>setState(()=>plan=v),title:Text(p['name'].toString()),subtitle:Text(money(p['price_cents']))),
-   FilledButton(onPressed:busy||open||plan==null||pix!=null?null:generate,child:const Text('Gerar PIX de teste')),
+   for(final p in plans) RadioListTile<String>(value:p['id'].toString(),groupValue:plan,onChanged:busy?null:(v)=>setState(()=>plan=v),title:Text(p['name'].toString()),subtitle:Text(money(p['price_cents']))),
+   FilledButton(onPressed:busy||plan==null||pix!=null?null:generate,child:Text(open?'Recuperar PIX existente':'Gerar PIX de teste')),
    if(pix!=null)...[
     if(pix!['encoded_image'] is String)Image.memory(base64Decode(pix!['encoded_image'] as String),height:220,errorBuilder:(_,__,___)=>const Text('QR Code indisponível')),
     SelectableText(pix!['payload']?.toString()??''),
