@@ -36,6 +36,13 @@ jobs:
           s = s.replace('</activity>', callback + '</activity>', 1)
           p.write_text(s)
           PY
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/src/main/AndroidManifest.xml')
+          s = p.read_text().replace('<application', '<uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />\n    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />\n    <application', 1)
+          p.write_text(s)
+          PY
+          cp native/MainActivity.kt android/app/src/main/kotlin/com/markys/markys_pdv_mobile/MainActivity.kt
           rm -f test/widget_test.dart
       - run: flutter pub get
       - run: flutter analyze --no-fatal-infos --no-fatal-warnings
