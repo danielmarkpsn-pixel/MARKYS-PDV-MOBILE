@@ -4,6 +4,7 @@ import 'data/local_database.dart';
 import 'products_page.dart';
 import 'stock_tools.dart';
 import 'receipt_page.dart';
+import 'merchant_pix.dart';
 
 String saleMoney(int cents) => 'R\$ ${(cents / 100).toStringAsFixed(2).replaceAll('.', ',')}';
 
@@ -53,7 +54,7 @@ class _SalesPageState extends State<SalesPage> {
   }
   Future<void> checkout() async {
     if(cart.isEmpty||businessId==null)return;
-    final result=await Navigator.push<int>(context,MaterialPageRoute(builder:(_)=>CheckoutPage(local:local,businessId:businessId!,products:products,customers:customers,cart:cart,orderId:widget.orderId)));
+    final result=await Navigator.push<int>(context,MaterialPageRoute(builder:(_)=>CheckoutPage(userId:widget.userId,local:local,businessId:businessId!,products:products,customers:customers,cart:cart,orderId:widget.orderId)));
     if(!mounted)return;
     if(result!=null && widget.orderId!=null){await openReceipt(context,local,businessId!,result);if(mounted)Navigator.pop(context);return;}
     if(result!=null){setState(()=>cart.clear());await load();if(mounted)await openReceipt(context,local,businessId!,result);if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Venda #$result registrada com sucesso')));}
@@ -84,8 +85,9 @@ class _SalesPageState extends State<SalesPage> {
 }
 
 class CheckoutPage extends StatefulWidget {
-  const CheckoutPage({super.key,required this.local,required this.businessId,required this.products,required this.customers,required this.cart,this.orderId});
+  const CheckoutPage({super.key,required this.userId,required this.local,required this.businessId,required this.products,required this.customers,required this.cart,this.orderId});
   final int? orderId;
+  final String userId;
   final LocalDatabase local;
   final int businessId;
   final List<Map<String,Object?>> products,customers;
@@ -112,6 +114,9 @@ class _CheckoutPageState extends State<CheckoutPage>{
     if(split.values.any((v)=>v<0)||split.values.fold<int>(0,(a,b)=>a+b)!=total||(split['Fiado']??0)>0&&customer==null){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Confira a divisão do pagamento e o cliente do fiado')));return;}
     setState(()=>busy=true);
     try{
+      final pixAmount=split['Pix']??0;
+      if(pixAmount>0 && !await MerchantPix.confirm(context,widget.userId,pixAmount))return;
+      if(!mounted)return;
       final id=await widget.local.finishSale(widget.businessId,customer,widget.cart,d,payment,split:split,orderId:widget.orderId);
       if(mounted)Navigator.pop(context,id);
     }catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(e is StateError?e.message.toString():'Não foi possível finalizar a venda')));}
