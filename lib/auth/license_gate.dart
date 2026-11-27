@@ -34,8 +34,29 @@ class _LicenseGateState extends State<LicenseGate> with WidgetsBindingObserver {
       final now=await clock();
       final start=record['elapsed'] as int;
       final elapsed=now['elapsed'] as int;
-      if(lifetime==null||now['boot']!=record['boot']||elapsed<start)return 0;
-      return max(0,lifetime*1000-(elapsed-start)-1000);
+      if(lifetime==null)return 0;
+      final wall=DateTime.now().millisecondsSinceEpoch;
+      final savedWall=record['wall'] as int?;
+      final lastWall=record['lastWall'] as int? ?? savedWall;
+      if(lastWall!=null && wall<lastWall)return 0;
+      int used;
+      if(now['boot']==record['boot']){
+        if(elapsed<start)return 0;
+        used=elapsed-start;
+        if(savedWall!=null)used=max(used,wall-savedWall);
+      }else{
+        if(savedWall==null || wall<savedWall)return 0;
+        used=wall-savedWall;
+      }
+      final previous=record['used'] as int? ?? 0;
+      used=max(used,previous);
+      final left=max(0,lifetime*1000-used-1000);
+      if(left>0 && savedWall!=null){
+        record['lastWall']=wall;
+        record['used']=used;
+        await storage.write(key:cacheKey,value:jsonEncode(record));
+      }
+      return left;
     }catch(_){return 0;}
   }
   void expire(){
@@ -73,6 +94,7 @@ class _LicenseGateState extends State<LicenseGate> with WidgetsBindingObserver {
     int offlineRemaining=0;
     String? device;
     Map<dynamic,dynamic>? started;
+    int? startedWall;
     String message='Não foi possível validar a licença. Conecte-se à internet e tente novamente.';
     try {
       final session=Supabase.instance.client.auth.currentSession;
@@ -84,7 +106,7 @@ class _LicenseGateState extends State<LicenseGate> with WidgetsBindingObserver {
         deadline=Timer(Duration(milliseconds:offlineRemaining),expire);
         setState((){allowed=true;initialCheck=false;});
       }
-      try{started=await clock();}catch(_){}
+      try{started=await clock();startedWall=DateTime.now().millisecondsSinceEpoch;}catch(_){}
       final request=await client.postUrl(Uri.parse('https://xwzxgazwqehcpyhrbord.supabase.co/functions/v1/validate-license')).timeout(const Duration(seconds:15));
       request.headers.set('Authorization','Bearer ${session.accessToken}');
       request.headers.contentType=ContentType.json;
@@ -98,7 +120,7 @@ class _LicenseGateState extends State<LicenseGate> with WidgetsBindingObserver {
         if(!ok){try {await storage.delete(key:cacheKey);}catch(_){}}
         final token=data['offline_lease'];
         if(ok&&token is String&&started!=null&&LeaseVerifier.verify(token,widget.userId,device)!=null){
-          try {await storage.write(key:cacheKey,value:jsonEncode({'token':token,'boot':started['boot'],'elapsed':started['elapsed']}));}catch(_){}
+          try {await storage.write(key:cacheKey,value:jsonEncode({'token':token,'boot':started['boot'],'elapsed':started['elapsed'],'wall':startedWall,'lastWall':startedWall,'used':0}));}catch(_){}
           offlineRemaining=await remaining(device);
         }
         if(ok && data['offline_hours']==0){try{await storage.delete(key:cacheKey);}catch(_){} offlineRemaining=0;}
