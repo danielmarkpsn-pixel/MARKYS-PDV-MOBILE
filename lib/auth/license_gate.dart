@@ -18,7 +18,7 @@ class LicenseGate extends StatefulWidget {
   State<LicenseGate> createState() => _LicenseGateState();
 }
 class _LicenseGateState extends State<LicenseGate> with WidgetsBindingObserver {
-  bool allowed=false, busy=false;
+  bool allowed=false, busy=false, initialCheck=true;
   String reason='Verificando licença...';
   Timer? timer, deadline;
   final storage=const FlutterSecureStorage();
@@ -81,6 +81,12 @@ class _LicenseGateState extends State<LicenseGate> with WidgetsBindingObserver {
       final session=Supabase.instance.client.auth.currentSession;
       if(session==null||session.user.id!=widget.userId)throw StateError('Sessão inválida');
       device=await deviceId();
+      offlineRemaining=await remaining(device);
+      if(offlineRemaining>0 && mounted){
+        deadline?.cancel();
+        deadline=Timer(Duration(milliseconds:offlineRemaining),expire);
+        setState((){allowed=true;initialCheck=false;});
+      }
       try{started=await clock();}catch(_){}
       final request=await client.postUrl(Uri.parse('https://xwzxgazwqehcpyhrbord.supabase.co/functions/v1/validate-license')).timeout(const Duration(seconds:15));
       request.headers.set('Authorization','Bearer ${session.accessToken}');
@@ -99,21 +105,24 @@ class _LicenseGateState extends State<LicenseGate> with WidgetsBindingObserver {
         }
         message=const {'profile_required':'Cadastro incompleto: nome, telefone e CPF/CNPJ necessários.','email_unconfirmed':'Confirme seu e-mail.','trial_registration_failed':'Não foi possível cadastrar o período de teste. Contate o suporte.','not_registered':'Licença ainda não cadastrada.','pending':'Licença aguardando ativação.','blocked':'Licença bloqueada.','expired':'Licença vencida.','device_limit':'Limite de dispositivos atingido.','not_started':'Licença ainda não iniciada.','missing_expiration':'Validade da licença não configurada.'}[data['reason']]??'Licença não autorizada.';
       }
+      else if(response.statusCode==401 && session.isExpired){transient=true;}
       else if(!transient){await storage.delete(key:cacheKey);message='Falha na validação (HTTP ${response.statusCode}). Entre novamente ou contate o suporte.';}
-    }on SocketException{transient=true;}on TimeoutException{transient=true;}catch(_){ok=false;}finally{client.close(force:true);}
+    }on SocketException{transient=true;}on TimeoutException{transient=true;}on HttpException{transient=true;}catch(_){ok=false;}finally{client.close(force:true);}
     if(transient&&device!=null){
       offlineRemaining=await remaining(device);
       ok=offlineRemaining>0;
     }
+    if(!mounted)return;
     deadline?.cancel();
     if(ok)deadline=Timer(Duration(milliseconds:offlineRemaining>0?offlineRemaining:300000),expire);
     if(!mounted)return;
     if(!ok && allowed) Navigator.of(context).popUntil((route)=>route.isFirst);
-    setState((){allowed=ok;reason=message;busy=false;});
+    setState((){allowed=ok;reason=message;busy=false;initialCheck=false;});
   }
   @override
   Widget build(BuildContext context){
     if(allowed)return widget.child;
+    if(initialCheck)return const Scaffold(body:Center(child:Column(mainAxisSize:MainAxisSize.min,children:[Text('MARKYS PDV MOBILE'),SizedBox(height:20),CircularProgressIndicator()])));
     return Scaffold(body:SafeArea(child:Center(child:SingleChildScrollView(padding:const EdgeInsets.all(24),child:Column(mainAxisSize:MainAxisSize.min,children:[
       const Icon(Icons.verified_user_outlined,size:64),
       const SizedBox(height:16),
