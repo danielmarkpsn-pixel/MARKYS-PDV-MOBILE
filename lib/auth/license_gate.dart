@@ -60,11 +60,8 @@ class _LicenseGateState extends State<LicenseGate> with WidgetsBindingObserver {
     final prefs=await SharedPreferences.getInstance();
     final old=prefs.getString('markys_license_device');
     if(old!=null)return old;
-    final random=Random.secure();
-    final bytes=List.generate(16, (_) => random.nextInt(256));
-    bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;
-    final h=bytes.map((b)=>b.toRadixString(16).padLeft(2,'0')).join();
-    final id='${h.substring(0,8)}-${h.substring(8,12)}-${h.substring(12,16)}-${h.substring(16,20)}-${h.substring(20)}';
+    final id=await const MethodChannel('markys/device').invokeMethod<String>('identifier');
+    if(id==null || id.isEmpty)throw StateError('Identificador indisponível');
     if(!await prefs.setString('markys_license_device',id))throw StateError('Falha ao salvar dispositivo');
     return id;
   }
