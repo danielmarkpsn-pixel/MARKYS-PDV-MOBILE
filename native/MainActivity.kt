@@ -15,6 +15,14 @@ class MainActivity : FlutterActivity() {
     private var pending: MethodChannel.Result? = null
     override fun configureFlutterEngine(engine: FlutterEngine) {
         super.configureFlutterEngine(engine)
+        MethodChannel(engine.dartExecutor.binaryMessenger, "markys/device").setMethodCallHandler { call, result ->
+            if (call.method != "identifier") result.notImplemented()
+            else try {
+                val id = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID)
+                if (id.isNullOrBlank()) result.error("DEVICE", "Identificador indisponível", null)
+                else result.success(UUID.nameUUIDFromBytes(("markys-pdv-mobile:" + id).toByteArray(Charsets.UTF_8)).toString())
+            } catch (e: Exception) { result.error("DEVICE", "Identificador indisponível", null) }
+        }
         MethodChannel(engine.dartExecutor.binaryMessenger, "markys/license_clock").setMethodCallHandler { call, result ->
             if (call.method != "snapshot") result.notImplemented()
             else try {
