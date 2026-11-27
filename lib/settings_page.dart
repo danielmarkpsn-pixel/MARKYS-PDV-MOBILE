@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:share_plus/share_plus.dart';
 import 'data/local_database.dart';
 import 'printer_page.dart';
+import 'merchant_pix.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key,required this.userId});
@@ -105,6 +106,7 @@ class _SettingsPageState extends State<SettingsPage>{
   @override
   Widget build(BuildContext context)=>PopScope(canPop:!busy,child:Scaffold(appBar:AppBar(title:const Text('Configurações')),body:ListView(padding:const EdgeInsets.all(16),children:[
     if(busy)const LinearProgressIndicator(),
+    ListTile(leading:const Icon(Icons.qr_code),title:const Text('PIX do comerciante'),onTap:busy?null:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MerchantPixPage(userId:widget.userId)))),
     ListTile(leading:const Icon(Icons.print),title:const Text('Impressora Bluetooth'),onTap:busy?null:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>PrinterPage(userId:widget.userId)))),
     ListTile(leading:const Icon(Icons.store),title:const Text('Dados da empresa'),onTap:busy?null:()=>run(editBusiness)),
     ListTile(leading:const Icon(Icons.backup),title:const Text('Criar backup'),subtitle:const Text('Exportar dados e fotos para um arquivo'),onTap:busy?null:()=>run(backup)),
