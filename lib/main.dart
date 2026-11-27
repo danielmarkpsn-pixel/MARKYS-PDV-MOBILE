@@ -202,13 +202,10 @@ class _HomePageState extends State<HomePage> {
     (Icons.shopping_cart_outlined, 'Vender'),
     (Icons.receipt_long_outlined, 'Pedidos'),
     (Icons.inventory_2_outlined, 'Produtos'),
-    (Icons.store_outlined, 'Catálogo Online'),
     (Icons.account_balance_wallet_outlined, 'Finanças'),
-    (Icons.local_offer_outlined, 'Cupons'),
     (Icons.people_outline, 'Clientes'),
     (Icons.history, 'Histórico'),
     (Icons.bar_chart_outlined, 'Estatísticas'),
-    (Icons.manage_accounts_outlined, 'Usuários'),
     (Icons.settings_outlined, 'Configurações'),
     (Icons.payment_outlined, 'Planos e pagamentos'),
     (Icons.help_outline, 'Ajuda'),
@@ -242,10 +239,8 @@ class _HomePageState extends State<HomePage> {
                 Navigator.push(context,MaterialPageRoute(builder:(_)=>ReportsPage(userId:userId)));
               } else if (section.$2 == 'Clientes') {
                 Navigator.of(context).push(MaterialPageRoute(builder: (_) => CustomersPage(userId: userId)));
-              } else if (section.$2 != 'Início') {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Módulo ${section.$2}: em desenvolvimento')),
-                );
+              } else if (section.$2 == 'Ajuda') {
+                Navigator.push(context,MaterialPageRoute(builder:(_)=>Scaffold(appBar:AppBar(title:const Text('Ajuda')),body:ListView(padding:const EdgeInsets.all(20),children:const [Text('Primeiros passos',style:TextStyle(fontWeight:FontWeight.bold)),Text('Cadastre produtos e clientes. Abra Vender para montar o carrinho e finalizar a venda.'),SizedBox(height:16),Text('PIX: configure sua chave em Configurações e confirme o crédito no banco antes de finalizar.'),SizedBox(height:16),Text('Backup: exporte seus dados em Configurações antes de trocar ou reinstalar o aparelho.')]))));
               }
             },
           )).toList())),
@@ -283,10 +278,6 @@ class _HomePageState extends State<HomePage> {
       Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: _HomeCard(
         icon: Icons.receipt_long_outlined, title: 'Pedidos em aberto',
         content: '$orders pedidos em aberto', button: 'Ver pedidos', onPressed: () => openCommerce('Pedidos'),
-      )),
-      const Padding(padding: EdgeInsets.all(12), child: _HomeCard(
-        icon: Icons.storefront_outlined, title: 'Catálogo Online',
-        content: 'Vamos começar a expor seus produtos?', button: 'Ver catálogo',
       )),
     ]),
   );
