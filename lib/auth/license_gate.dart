@@ -94,20 +94,23 @@ class _LicenseGateState extends State<LicenseGate> with WidgetsBindingObserver {
       request.write(jsonEncode({'device_id':device}));
       final response=await request.close().timeout(const Duration(seconds:15));
       transient=response.statusCode>=500;
-      final data=jsonDecode(await response.transform(utf8.decoder).join().timeout(const Duration(seconds:15)));
+      final body=await response.transform(utf8.decoder).join().timeout(const Duration(seconds:15));
+      final data=response.statusCode==200?jsonDecode(body):null;
       if(response.statusCode==200 && data is Map){
         ok=data['allowed']==true;
-        try {await storage.delete(key:cacheKey);}catch(_){}
+        if(!ok){try {await storage.delete(key:cacheKey);}catch(_){}}
         final token=data['offline_lease'];
         if(ok&&token is String&&started!=null&&LeaseVerifier.verify(token,widget.userId,device)!=null){
           try {await storage.write(key:cacheKey,value:jsonEncode({'token':token,'boot':started['boot'],'elapsed':started['elapsed']}));}catch(_){}
           offlineRemaining=await remaining(device);
         }
-        message=const {'profile_required':'Cadastro incompleto: nome, telefone e CPF/CNPJ necessários.','email_unconfirmed':'Confirme seu e-mail.','trial_registration_failed':'Não foi possível cadastrar o período de teste. Contate o suporte.','not_registered':'Licença ainda não cadastrada.','pending':'Licença aguardando ativação.','blocked':'Licença bloqueada.','expired':'Licença vencida.','device_limit':'Limite de dispositivos atingido.','not_started':'Licença ainda não iniciada.','missing_expiration':'Validade da licença não configurada.'}[data['reason']]??'Licença não autorizada.';
+        if(ok && data['offline_hours']==0){try{await storage.delete(key:cacheKey);}catch(_){} offlineRemaining=0;}
+        if(ok && data['offline_hours']!=0 && offlineRemaining<=0){message='Autorização offline não disponível. Verifique a configuração da licença na central.';}
+        else message=const {'profile_required':'Cadastro incompleto: nome, telefone e CPF/CNPJ necessários.','email_unconfirmed':'Confirme seu e-mail.','trial_registration_failed':'Não foi possível cadastrar o período de teste. Contate o suporte.','not_registered':'Licença ainda não cadastrada.','pending':'Licença aguardando ativação.','blocked':'Licença bloqueada.','expired':'Licença vencida.','device_limit':'Limite de dispositivos atingido.','not_started':'Licença ainda não iniciada.','missing_expiration':'Validade da licença não configurada.'}[data['reason']]??'Licença não autorizada.';
       }
       else if(response.statusCode==401 && session.isExpired){transient=true;}
       else if(!transient){await storage.delete(key:cacheKey);message='Falha na validação (HTTP ${response.statusCode}). Entre novamente ou contate o suporte.';}
-    }on SocketException{transient=true;}on TimeoutException{transient=true;}on HttpException{transient=true;}catch(_){ok=false;}finally{client.close(force:true);}
+    }on SocketException{transient=true;}on TimeoutException{transient=true;}on HttpException{transient=true;}on HandshakeException{transient=true;}catch(_){ok=false;}finally{client.close(force:true);}
     if(transient&&device!=null){
       offlineRemaining=await remaining(device);
       ok=offlineRemaining>0;
